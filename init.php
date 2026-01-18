@@ -58,7 +58,26 @@ class Af_Filter_Enclosures extends Plugin {
         // Check if we should filter enclosures
         // The setting is 'always_display_attachments' in API responses
         // (mapped from feed's 'always_display_enclosures' database column)
-        $always_display = $article['always_display_attachments'] ?? true;
+        $always_display = $article['always_display_attachments'] ?? null;
+
+        // If not provided by API (getArticle case), fetch from database
+        if ($always_display === null && isset($article['feed_id'])) {
+            $sth = $this->host->pdo->prepare("SELECT always_display_enclosures FROM ttrss_feeds WHERE id = ?");
+            $sth->execute([$article['feed_id']]);
+
+            if ($row = $sth->fetch()) {
+                // Convert database boolean to PHP boolean
+                $always_display = sql_bool_to_bool($row['always_display_enclosures']);
+
+                Debug::log("af_filter_enclosures: Fetched setting from DB for feed " .
+                    $article['feed_id'] . ": always_display_enclosures=" .
+                    ($always_display ? 'true' : 'false'), Debug::LOG_VERBOSE);
+            } else {
+                $always_display = true; // fallback if feed not found
+            }
+        } else if ($always_display === null) {
+            $always_display = true; // fallback if no feed_id
+        }
 
         if (!$always_display && isset($article['attachments'])) {
             // Remove attachments from the response
