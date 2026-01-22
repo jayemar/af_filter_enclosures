@@ -2,28 +2,6 @@
 
 A TT-RSS plugin that filters enclosures from API responses based on the feed's `always_display_enclosures` setting.
 
-## Problem
-
-TT-RSS has a per-feed setting called `always_display_enclosures` that controls whether RSS enclosures (attachments) are shown in the web UI. However, this setting is **not respected by the API** - plugins like FreshAPI always receive all enclosures regardless of this setting.
-
-This causes duplicate images in mobile RSS readers like Capy Reader when a feed includes the same image both:
-1. As an inline `<img>` tag in the HTML content
-2. As an RSS `<enclosure>` or `<media:content>` element
-
-Example feeds affected:
-- Lemmy RSS feeds (like Calvin and Hobbes)
-- Many podcast feeds that embed cover art in content AND as enclosures
-
-## Solution
-
-This plugin hooks into `HOOK_RENDER_ARTICLE_API` to intercept API responses before they're sent to clients. When a feed has `always_display_enclosures = false`, the plugin removes the `attachments` array from the API response.
-
-This approach:
-- Works with any API client (FreshAPI, Fever, etc.)
-- Doesn't require modifying any existing plugins
-- Respects the existing TT-RSS setting
-- Is fully reproducible on new installations
-
 ## Installation
 
 ### Option 1: Copy directly
@@ -127,6 +105,83 @@ After enabling, test with a feed that has `always_display_enclosures = false`:
 You can also check the TT-RSS debug log for messages like:
 ```
 af_filter_enclosures: Removed attachments for article: Article Title (feed setting: always_display_enclosures=false)
+```
+
+## Bug Fix (2026-01-21)
+
+**Issue:** Plugin was crashing silently with database access error.
+
+**Symptoms:**
+- Duplicate images still appeared despite plugin enabled
+- No error messages visible to user
+- Plugin appeared to be installed and enabled correctly
+
+**Root Cause:**
+Line 65 incorrectly accessed `$this->host->pdo` (private property):
+```php
+$sth = $this->host->pdo->prepare("SELECT always_display_enclosures FROM ttrss_feeds WHERE id = ?");
+```
+
+This caused PHP error: `Cannot access private property PluginHost::$pdo`
+
+**Fix:**
+Changed to use inherited protected property:
+```php
+$sth = $this->pdo->prepare("SELECT always_display_enclosures FROM ttrss_feeds WHERE id = ?");
+```
+
+**How to verify fix:**
+```bash
+# Check for errors (should be none after fix applied)
+docker compose exec db psql -U postgres -d postgres -c "
+SELECT COUNT(*) FROM ttrss_error_log WHERE errstr LIKE '%filter_enclosures%';"
+```
+
+If you see errors, they should be dated before 2026-01-21. No new errors should appear after plugin update.
+
+## Testing
+
+The plugin includes a comprehensive test suite with 7 tests covering:
+- Return value structure (headline/article wrapper)
+- Attachment filtering based on `always_display_attachments` setting
+- Database fallback when setting not in API response
+- Edge cases (null articles, missing feed_id)
+
+**Key Test:** `test_returns_properly_structured_row_for_headline()` - This test catches the critical return value bug that was causing duplicate images.
+
+### Run Tests
+
+#### Option 1: Docker (Recommended)
+
+No PHP installation required:
+
+```bash
+docker run --rm -v /home/jayemar/projects/af_filter_enclosures:/app -w /app php:8.1-cli bash -c "
+  curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer &&
+  composer install &&
+  vendor/bin/phpunit --testdox
+"
+```
+
+#### Option 2: Local (Requires PHP + Composer)
+
+```bash
+cd /home/jayemar/projects/af_filter_enclosures
+composer install
+./vendor/bin/phpunit --testdox
+```
+
+### Test Output
+
+Successful run shows:
+```
+PHPUnit 9.5.x
+
+......................                                            7 / 7 (100%)
+
+Time: 00:00.050, Memory: 6.00 MB
+
+OK (7 tests, 15 assertions)
 ```
 
 ## Notes

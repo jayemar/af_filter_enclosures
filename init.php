@@ -44,16 +44,11 @@ class Af_Filter_Enclosures extends Plugin {
      * Hook: Filter enclosures from API response based on feed setting
      *
      * @param array $row Contains either 'headline' or 'article' key
-     * @return array The modified headline/article
+     * @return array The modified article (unwrapped)
      */
     function hook_render_article_api($row) {
-        // Extract the article/headline from the wrapper
-        $is_headline = isset($row['headline']);
-        $article = $is_headline ? $row['headline'] : ($row['article'] ?? null);
-
-        if (!$article) {
-            return $row;
-        }
+        // Extract article from wrapper
+        $article = isset($row['headline']) ? $row['headline'] : $row['article'];
 
         // Check if we should filter enclosures
         // The setting is 'always_display_attachments' in API responses
@@ -62,7 +57,7 @@ class Af_Filter_Enclosures extends Plugin {
 
         // If not provided by API (getArticle case), fetch from database
         if ($always_display === null && isset($article['feed_id'])) {
-            $sth = $this->host->pdo->prepare("SELECT always_display_enclosures FROM ttrss_feeds WHERE id = ?");
+            $sth = $this->pdo->prepare("SELECT always_display_enclosures FROM ttrss_feeds WHERE id = ?");
             $sth->execute([$article['feed_id']]);
 
             if ($row = $sth->fetch()) {
@@ -88,6 +83,7 @@ class Af_Filter_Enclosures extends Plugin {
                 Debug::LOG_VERBOSE);
         }
 
+        // Return unwrapped article (not the wrapper!)
         return $article;
     }
 
