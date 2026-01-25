@@ -43,12 +43,12 @@ class Af_Filter_Enclosures extends Plugin {
     /**
      * Hook: Filter enclosures from API response based on feed setting
      *
-     * @param array $row Contains either 'headline' or 'article' key
-     * @return array The modified article (unwrapped)
+     * @param array $row Contains either 'headline' or 'article' key, or unwrapped article
+     * @return array The modified article (unwrapped - callback handles wrapper)
      */
     function hook_render_article_api($row) {
-        // Extract article from wrapper
-        $article = isset($row['headline']) ? $row['headline'] : $row['article'];
+        // Extract article from wrapper (may be 'headline', 'article', or unwrapped)
+        $article = $row['headline'] ?? $row['article'] ?? $row;
 
         // Check if we should filter enclosures
         // The setting is 'always_display_attachments' in API responses
@@ -60,9 +60,9 @@ class Af_Filter_Enclosures extends Plugin {
             $sth = $this->pdo->prepare("SELECT always_display_enclosures FROM ttrss_feeds WHERE id = ?");
             $sth->execute([$article['feed_id']]);
 
-            if ($row = $sth->fetch()) {
+            if ($db_row = $sth->fetch()) {
                 // Convert database boolean to PHP boolean
-                $always_display = sql_bool_to_bool($row['always_display_enclosures']);
+                $always_display = sql_bool_to_bool($db_row['always_display_enclosures']);
 
                 Debug::log("af_filter_enclosures: Fetched setting from DB for feed " .
                     $article['feed_id'] . ": always_display_enclosures=" .
@@ -83,7 +83,7 @@ class Af_Filter_Enclosures extends Plugin {
                 Debug::LOG_VERBOSE);
         }
 
-        // Return unwrapped article (not the wrapper!)
+        // Always return unwrapped article (callback will handle it)
         return $article;
     }
 
