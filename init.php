@@ -75,10 +75,20 @@ class Af_Filter_Enclosures extends Plugin {
         }
 
         if (!$always_display && isset($article['attachments'])) {
-            // Remove attachments from the response
-            unset($article['attachments']);
+            // Preserve 'og:thumbnail' attachments - these are fallback thumbnails added by
+            // af_enhance_images for list-view display, not original RSS enclosures, so they
+            // don't cause duplicate-image issues with inline content.
+            // Strip everything else to prevent RSS enclosure duplicates.
+            $article['attachments'] = array_values(array_filter(
+                $article['attachments'],
+                function ($att) { return ($att['title'] ?? '') === 'og:thumbnail'; }
+            ));
 
-            Debug::log("af_filter_enclosures: Removed attachments for article: " .
+            if (empty($article['attachments'])) {
+                unset($article['attachments']);
+            }
+
+            Debug::log("af_filter_enclosures: Filtered attachments for article: " .
                 ($article['title'] ?? 'unknown') . " (feed setting: always_display_enclosures=false)",
                 Debug::LOG_VERBOSE);
         }
